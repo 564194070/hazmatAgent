@@ -3,22 +3,26 @@ package agent
 import (
 	agentdesc "agentFrame/cmd/xatu-agent/agentDesc"
 	"agentFrame/cmd/xatu-agent/llm"
+	"agentFrame/cmd/xatu-agent/memory"
+	"agentFrame/cmd/xatu-agent/memory/manager"
 	"agentFrame/cmd/xatu-agent/tools"
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 )
 
 type ReActAgent struct {
 	llmClient     llm.LLMClientIF
 	agentDesc     string
+	memoryManager manager.MemoryManagerIF
 	toolsRegistry tools.ToolRegistryIF
 	currentStep   int
 	maxSteps      int
-	history       []string
 }
 
-func NewReActAgent(llmClient llm.LLMClientIF) *ReActAgent {
-	return &ReActAgent{llmClient: llmClient, maxSteps: 10, history: make([]string, 0)}
+func NewReActAgent(llmClient llm.LLMClientIF, memoryManager manager.MemoryManagerIF) *ReActAgent {
+	return &ReActAgent{llmClient: llmClient, maxSteps: 10, memoryManager: memoryManager}
 }
 
 func (a *ReActAgent) Run(ctx context.Context, prompt string) (string, error) {
@@ -26,15 +30,32 @@ func (a *ReActAgent) Run(ctx context.Context, prompt string) (string, error) {
 	if a.toolsRegistry == nil {
 		a.toolsRegistry = tools.NewToolRegistry()
 		a.toolsRegistry.RegisterTool(tools.NewEchoTool())
+		a.toolsRegistry.RegisterTool(tools.NewMoveFilesTool())
+		a.toolsRegistry.RegisterTool(tools.NewReadFileListTool())
+		a.toolsRegistry.RegisterTool(tools.NewMkdirAllTool())
 	}
 
+	const userID = "1"
+	const sessionID = "1001"
+
+	// 问题只写入 Manager 一次，后续 history 全部从 Manager 召回
+	if err := a.saveMemory(userID, sessionID, "Question: "+prompt); err != nil {
+		return "", err
+	}
+
+	reActPromptData := agentdesc.ReActPromptData{
+		Tools:    a.toolsRegistry.GetAllToolsDescForPrompt(),
+		Question: prompt,
+	}
+
+	var lastResp string
 	// 在限制步数内解决问题
 	for a.currentStep = 0; a.currentStep < a.maxSteps; a.currentStep++ {
-		reActPromptData := agentdesc.ReActPromptData{
-			Tools:    a.toolsRegistry.GetAllToolsDescForPrompt(),
-			Question: prompt,
-			History:  a.history,
+		history, err := a.loadHistory(userID)
+		if err != nil {
+			return "", err
 		}
+		reActPromptData.History = history
 
 		agentDesc, err := agentdesc.RenderAgentPrompt(reActPromptData)
 		if err != nil {
@@ -42,8 +63,82 @@ func (a *ReActAgent) Run(ctx context.Context, prompt string) (string, error) {
 		}
 
 		slog.Info("agentDesc", "agentDesc", agentDesc)
-		a.llmClient.Call(agentDesc)
+		llmResp, err := a.llmClient.Call(agentDesc)
+		if err != nil {
+			return "", err
+		}
+		slog.Info("llmResp", "llmResp", llmResp)
+
+		if err := a.saveMemory(userID, sessionID, llmResp); err != nil {
+			return "", err
+		}
+
+		action, err := parseReActAction(llmResp)
+		if err != nil {
+			return "", err
+		}
+		slog.Info("解析Action", "tool", action.Name, "input", action.Input)
+
+		if action.IsFinish() {
+			return action.Input, nil
+		}
+
+		obs, err := a.executeAction(action)
+		if err != nil {
+			return "", err
+		}
+		if err := a.saveMemory(userID, sessionID, "Observation: "+obs); err != nil {
+			return "", err
+		}
+		slog.Info("工具执行结果", "observation", obs)
+		lastResp = obs
 	}
 
-	return "", nil
+	return lastResp, nil
+}
+
+func (a *ReActAgent) executeAction(action *reActAction) (string, error) {
+	tool := a.lookupTool(action.Name)
+	if tool == nil {
+		return fmt.Sprintf("未知工具 %s，可用工具: %v", action.Name, a.toolsRegistry.ListTools()), nil
+	}
+	return tool.Execute(parseToolInput(action.Input))
+}
+
+func (a *ReActAgent) lookupTool(name string) tools.ToolIF {
+	if tool := a.toolsRegistry.GetTool(name); tool != nil {
+		return tool
+	}
+	if tool := a.toolsRegistry.GetTool(name + "工具"); tool != nil {
+		return tool
+	}
+	for _, registered := range a.toolsRegistry.ListTools() {
+		if strings.TrimSuffix(registered, "工具") == name {
+			return a.toolsRegistry.GetTool(registered)
+		}
+	}
+	return nil
+}
+
+func (a *ReActAgent) loadHistory(userID string) ([]string, error) {
+	entries, err := a.memoryManager.Retrieve(manager.RetrieveOption{
+		UserID: userID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	history := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		history = append(history, entry.Content)
+	}
+	return history, nil
+}
+
+func (a *ReActAgent) saveMemory(userID, sessionID, content string) error {
+	return a.memoryManager.AddMemory(memory.MemoryEntry{
+		UserID:    userID,
+		SessionID: sessionID,
+		Content:   content,
+	})
 }

@@ -3,6 +3,8 @@ package commandcli
 import (
 	"agentFrame/cmd/xatu-agent/agent"
 	"agentFrame/cmd/xatu-agent/llm"
+	"agentFrame/cmd/xatu-agent/memory"
+	"agentFrame/cmd/xatu-agent/memory/manager"
 	"context"
 	"log/slog"
 
@@ -15,7 +17,14 @@ func CommandCliAction(ctx context.Context, c *cli.Command) error {
 
 	prompt := c.String("prompt")
 	slog.Info("用户提问", "prompt", prompt)
-	reActAgent := agent.NewReActAgent(llm.NewOpenAILLMClient())
+
+	memoryManager, err := manager.NewMemoryStoreManager([]memory.MemoryStoreType{memory.MemoryStoreTypeMySQL}, nil)
+	if err != nil {
+		slog.Error("创建记忆管理器失败", "error", err)
+		return err
+	}
+
+	reActAgent := agent.NewReActAgent(llm.NewOpenAILLMClient(), memoryManager)
 	res, err := reActAgent.Run(ctx, prompt)
 	if err != nil {
 		slog.Error("执行智能体失败", "error", err)
