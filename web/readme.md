@@ -69,3 +69,7 @@ const items = ref([
 
 # 测试
 npm run dev
+
+# 安装路由
+
+npm install vue-router

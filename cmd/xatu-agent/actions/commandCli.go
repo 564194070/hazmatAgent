@@ -1,4 +1,4 @@
-package commandcli
+package actions
 
 import (
 	"agentFrame/cmd/xatu-agent/agent"

@@ -2,8 +2,8 @@ package store
 
 import (
 	"agentFrame/cmd/xatu-agent/memory"
+	"agentFrame/cmd/xatu-agent/utils/client"
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -11,48 +11,14 @@ import (
 	"gorm.io/gorm"
 )
 
-type MySQLClientConfig struct {
-	User     string
-	Password string
-	Host     string
-	Port     string
-	DBName   string
-	Charset  string
-}
-
-func NewMySQLClientConfig() *MySQLClientConfig {
-	charset := os.Getenv("MYSQL_CHARSET")
-	if charset == "" {
-		charset = "utf8mb4"
-	}
-	port := os.Getenv("MYSQL_PORT")
-	if port == "" {
-		port = "3306"
-	}
-	return &MySQLClientConfig{
-		User:     os.Getenv("MYSQL_USER"),
-		Password: os.Getenv("MYSQL_PASSWORD"),
-		Host:     os.Getenv("MYSQL_HOST"),
-		Port:     port,
-		DBName:   os.Getenv("MYSQL_DBNAME"),
-		Charset:  charset,
-	}
-}
-
-func (c *MySQLClientConfig) getDSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local",
-		c.User, c.Password, c.Host, c.Port, c.DBName, c.Charset,
-	)
-}
-
 type MySQLStore struct {
 	sqlDB  *sql.DB
 	gormDB *gorm.DB
 }
 
 func NewMySQLStore() (*MySQLStore, error) {
-	config := NewMySQLClientConfig()
-	dsn := config.getDSN()
+	config := client.NewMySQLClientConfig(os.Getenv("MYSQL_MEMORY_DBNAME"))
+	dsn := config.GetDSN()
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {

@@ -18,16 +18,34 @@ func main() {
 	_ = godotenv.Load()
 
 	cmd := &cli.Command{
-		Name:  "commandCli",
-		Usage: "调用综合智能体处理请求",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "prompt",
-				Aliases: []string{"p"},
-				Usage:   "提问文字",
+		Name:  "xatu-agent",
+		Usage: "启动xatu-agent智能体",
+		Commands: []*cli.Command{
+			{
+				Name:   "cmdcli",
+				Usage:  "命令行交互模式",
+				Action: commandcli.CommandCliAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "prompt",
+						Aliases: []string{"p"},
+						Usage:   "提问文字",
+					},
+				},
+			},
+			{
+				Name:   "server",
+				Usage:  "服务化交互模式",
+				Action: commandcli.ServerAction,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "port",
+						Aliases: []string{"p"},
+						Usage:   "端口",
+					},
+				},
 			},
 		},
-		Action: commandcli.CommandCliAction,
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
