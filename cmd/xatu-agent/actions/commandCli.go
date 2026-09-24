@@ -5,6 +5,7 @@ import (
 	"agentFrame/cmd/xatu-agent/llm"
 	"agentFrame/cmd/xatu-agent/memory"
 	"agentFrame/cmd/xatu-agent/memory/manager"
+	"agentFrame/cmd/xatu-agent/tools"
 	"context"
 	"log/slog"
 
@@ -25,7 +26,13 @@ func CommandCliAction(ctx context.Context, c *cli.Command) error {
 	}
 
 	reActAgent := agent.NewReActAgent(llm.NewOpenAILLMClient(), memoryManager)
-	res, err := reActAgent.Run(ctx, prompt)
+	registry := tools.NewToolRegistry()
+	registry.RegisterTool(tools.NewEchoTool())
+	registry.RegisterTool(tools.NewMoveFilesTool())
+	registry.RegisterTool(tools.NewReadFileListTool())
+	registry.RegisterTool(tools.NewMkdirAllTool())
+	reActAgent.SetTools(registry)
+	res, err := reActAgent.Run(ctx, "1", "1001", prompt)
 	if err != nil {
 		slog.Error("执行智能体失败", "error", err)
 		return err

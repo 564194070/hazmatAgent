@@ -105,3 +105,14 @@ func (s *MySQLStore) GetBySessionId(sessionId string) ([]memory.MemoryEntry, err
 	}
 	return entries, nil
 }
+
+func (s *MySQLStore) GetByUserAndSession(userId, sessionId string) ([]memory.MemoryEntry, error) {
+	var entries []memory.MemoryEntry
+	res := s.gormDB.Where("user_id = ? AND session_id = ?", userId, sessionId).
+		Order("create_at asc").
+		Find(&entries)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return entries, nil
+}

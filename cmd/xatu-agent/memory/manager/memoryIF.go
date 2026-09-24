@@ -6,6 +6,7 @@ import (
 
 type RetrieveOption struct {
 	UserID      string
+	SessionID   string
 	Query       string
 	TopK        int
 	MaxToken    int // 新增：召回记忆总token上限

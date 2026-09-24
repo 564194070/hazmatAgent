@@ -50,7 +50,11 @@ func (m *MemoryStoreManager) Retrieve(opt RetrieveOption) ([]*memory.MemoryEntry
 	var err error
 
 	for _, store := range m.memoryStores {
-		entries, err = store.GetByUserId(opt.UserID)
+		if opt.SessionID != "" {
+			entries, err = store.GetByUserAndSession(opt.UserID, opt.SessionID)
+		} else {
+			entries, err = store.GetByUserId(opt.UserID)
+		}
 		if err != nil {
 			return nil, err
 		}

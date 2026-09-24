@@ -16,7 +16,7 @@ import { useAuth } from '../composables/useAuth'
 import { createGreeting, useSessions } from '../composables/useSessions'
 
 const router = useRouter()
-const { userId, logout } = useAuth()
+const { token, logout } = useAuth()
 const sessions = useSessions()
 
 const text = ref('')
@@ -25,29 +25,39 @@ const renameKey = ref('')
 const renameText = ref('')
 
 const [agent] = useXAgent<string, { message: string }, string>({
-  request: async ({ message }, { onSuccess }) => {
+  request: async ({ message }, { onSuccess, onError }) => {
     // 调用发生时再读，不能在 setup 时把 sessionId 抄成常量
     const sessionId = sessions.activeKey.value
-    const currentUserId = userId.value ?? ''
+    const userId = localStorage.getItem('userId')
+    const currentToken = token.value
+    if (!currentToken || !sessionId) {
+      onError(new Error('未登录'))
+      return
+    }
 
-    // 以后换成真实接口，Vite 已把 /api 代理到 127.0.0.1:8080：
-    // const res = await fetch('/api/chat', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ userId: currentUserId, sessionId, message }),
-    // })
-    // const data = await res.json()
-    // onSuccess([data.reply])
-    void currentUserId
-    void sessionId
-
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    onSuccess([`（mock）你说的是：${message}`])
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({ userId, sessionId, message }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { reply?: string; msg?: string }
+      if (!res.ok) {
+        throw new Error(data.msg || '请求失败')
+      }
+      onSuccess([data.reply ?? ''])
+    } catch (err) {
+      onError(err instanceof Error ? err : new Error('请求失败'))
+    }
   },
 })
 
 const { messages, onRequest, setMessages } = useXChat<string, string, { message: string }, string>({
   agent: agent.value,
+  requestFallback: (_message, { error }) => error.message || '请求失败',
   defaultMessages: [
     { id: 'welcome', message: '你好，我是 xatu-agent。', status: 'success' },
   ],

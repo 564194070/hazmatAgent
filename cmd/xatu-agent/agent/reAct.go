@@ -25,18 +25,17 @@ func NewReActAgent(llmClient llm.LLMClientIF, memoryManager manager.MemoryManage
 	return &ReActAgent{llmClient: llmClient, maxSteps: 10, memoryManager: memoryManager}
 }
 
-func (a *ReActAgent) Run(ctx context.Context, prompt string) (string, error) {
+func (a *ReActAgent) SetTools(registry tools.ToolRegistryIF) {
+	a.toolsRegistry = registry
+}
 
+func (a *ReActAgent) Run(ctx context.Context, userID, sessionID, prompt string) (string, error) {
 	if a.toolsRegistry == nil {
-		a.toolsRegistry = tools.NewToolRegistry()
-		a.toolsRegistry.RegisterTool(tools.NewEchoTool())
-		a.toolsRegistry.RegisterTool(tools.NewMoveFilesTool())
-		a.toolsRegistry.RegisterTool(tools.NewReadFileListTool())
-		a.toolsRegistry.RegisterTool(tools.NewMkdirAllTool())
+		return "", fmt.Errorf("未注册工具")
 	}
-
-	const userID = "1"
-	const sessionID = "1001"
+	if userID == "" || sessionID == "" {
+		return "", fmt.Errorf("缺少用户或会话")
+	}
 
 	// 问题只写入 Manager 一次，后续 history 全部从 Manager 召回
 	if err := a.saveMemory(userID, sessionID, "Question: "+prompt); err != nil {
@@ -51,7 +50,7 @@ func (a *ReActAgent) Run(ctx context.Context, prompt string) (string, error) {
 	var lastResp string
 	// 在限制步数内解决问题
 	for a.currentStep = 0; a.currentStep < a.maxSteps; a.currentStep++ {
-		history, err := a.loadHistory(userID)
+		history, err := a.loadHistory(userID, sessionID)
 		if err != nil {
 			return "", err
 		}
@@ -120,9 +119,10 @@ func (a *ReActAgent) lookupTool(name string) tools.ToolIF {
 	return nil
 }
 
-func (a *ReActAgent) loadHistory(userID string) ([]string, error) {
+func (a *ReActAgent) loadHistory(userID, sessionID string) ([]string, error) {
 	entries, err := a.memoryManager.Retrieve(manager.RetrieveOption{
-		UserID: userID,
+		UserID:    userID,
+		SessionID: sessionID,
 	})
 	if err != nil {
 		return nil, err

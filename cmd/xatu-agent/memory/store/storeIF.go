@@ -18,6 +18,8 @@ type MemoryStorerIF interface {
 	GetByUserId(userId string) ([]memory.MemoryEntry, error)
 	// 通过session_id获取记忆
 	GetBySessionId(sessionId string) ([]memory.MemoryEntry, error)
+	// 通过 user_id 和 session_id 获取记忆，避免串到别的用户
+	GetByUserAndSession(userId, sessionId string) ([]memory.MemoryEntry, error)
 	// 通过id获取记忆
 	GetById(id string) (memory.MemoryEntry, error)
 }
